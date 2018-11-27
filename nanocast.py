@@ -27,13 +27,15 @@ from bitstring import BitArray
 rdata = redis.StrictRedis(host='localhost', port=6379, db=2)  # used for price data and subscriber uuid info
 
 # get environment
-rpc_url = os.getenv('NANO_RPC_URL', 'http://127.0.0.1:7076')  # use env, else default to localhost rpc port
+rpc_url = os.getenv('NANO_RPC_URL', 'http://34.220.55.202:55000')  # use env, else default to localhost rpc port
 work_url = os.getenv('NANO_WORK_URL', rpc_url)  # use env, else default to rpc
 callback_port = os.getenv('NANO_CALLBACK_PORT', 17076)
-socket_port = os.getenv('NANO_SOCKET_PORT', 443)
-cert_dir = os.getenv('NANO_CERT_DIR')  # use /home/username instead of /home/username/
-cert_key_file = os.getenv('NANO_KEY_FILE')  # TLS certificate private key
-cert_crt_file = os.getenv('NANO_CRT_FILE')  # full TLS certificate bundle
+socket_port = os.getenv('NANO_SOCKET_PORT', 8081)
+cert_dir = '/home/ubuntu'  # use /home/username instead of /home/username/
+cert_key_file = 'nanotest.key'  # TLS certificate private key
+cert_crt_file = 'nanotest.crt'  # full TLS certificate bundle
+
+print(cert_dir)
 
 # whitelisted commands, disallow anything used for local node-based wallet as we may be using multiple back ends
 allowed_rpc_actions = ["account_balance", "account_block_count", "account_check", "account_info", "account_history",
@@ -617,7 +619,7 @@ if __name__ == "__main__":
     print(os.path.join(cert_dir, cert_crt_file), os.path.join(cert_dir, cert_key_file))
     cert.load_cert_chain(os.path.join(cert_dir, cert_crt_file), os.path.join(cert_dir, cert_key_file))
 
-    https_server = tornado.httpserver.HTTPServer(application, ssl_options=cert)
+    https_server = tornado.httpserver.HTTPServer(application)
     https_server.listen(socket_port)
 
     nodecallback.listen(callback_port)  # set in config.json as follows:
