@@ -35,8 +35,6 @@ cert_dir = '/home/ubuntu'  # use /home/username instead of /home/username/
 cert_key_file = 'nanotest.key'  # TLS certificate private key
 cert_crt_file = 'nanotest.crt'  # full TLS certificate bundle
 
-print(cert_dir)
-
 # whitelisted commands, disallow anything used for local node-based wallet as we may be using multiple back ends
 allowed_rpc_actions = ["account_balance", "account_block_count", "account_check", "account_info", "account_history",
                        "account_representative", "account_subscribe", "account_weight", "accounts_balances",
@@ -66,6 +64,9 @@ active_work = set()
 
 def address_decode(address):
     # Given a string containing an XRB/NANO address, confirm validity and provide resulting hex address
+    print("[" + str(int(time.time())) + "] Address decoding..." + address)
+    logging.info('Address decoding ' + address)
+
     if address[:4] == 'xrb_' or address[:5] == 'nano_':
         account_map = "13456789abcdefghijkmnopqrstuwxyz"  # each index = binary value, account_lookup[0] == '1'
         account_lookup = {}
@@ -129,6 +130,8 @@ def send_prices():
 @tornado.gen.coroutine
 def rpc_request(http_client, body):
     response = yield http_client.fetch(rpc_url, method='POST', body=body)
+    print("[" + str(int(time.time())) + " response rpc request " + str(response.code))
+    logging.info("response rpc request" + str(response.code))
     raise tornado.gen.Return(response)
 
 
@@ -136,7 +139,9 @@ def rpc_request(http_client, body):
 def rpc_defer(handler, message):
     rpc = tornado.httpclient.AsyncHTTPClient()
     response = yield rpc_request(rpc, message)
-    logging.info('rpc request return code;' + str(response.code))
+    print("[" + str(int(time.time())) + 'rpc defer request return code;' + str(response.code) + message)
+    logging.info('rpc defer request return code;' + str(response.code) + message)
+
     if response.error:
         logging.error('rpc defer request failure;' + str(
             response.error) + ';' + rpc_url + ';' + message + ';' + handler.request.remote_ip + ';' + handler.id)
@@ -255,6 +260,8 @@ def process_defer(handler, block):
 @tornado.gen.coroutine
 def work_request(http_client, body):
     response = yield http_client.fetch(work_url, method='POST', body=body)
+    print("[" + str(int(time.time())) + " response  work url " + response)
+    logging.info("response work url  " + response)
     raise tornado.gen.Return(response)
 
 
@@ -287,10 +294,15 @@ def work_defer(handler, message):
 @tornado.gen.coroutine
 def rpc_subscribe(handler, account, currency):
     logging.info('subscribing;' + handler.request.remote_ip + ';' + handler.id)
+    print("[" + str(int(time.time())) + " subscribing " + handler.request.remote_ip)
+
     rpc = tornado.httpclient.AsyncHTTPClient()
     message = '{\"action\":\"account_info",\"account\":\"' + account + '\",\"pending\":true,\"representative\":true}'
     logging.info('sending request;' + message + ';' + handler.request.remote_ip + ';' + handler.id)
+    print("[" + str(int(time.time())) + " sending request " + message)
+
     response = yield rpc_request(rpc, message)
+    
 
     if response.error:
         logging.error('subscribe error;' + handler.request.remote_ip + ';' + handler.id)
@@ -302,7 +314,12 @@ def rpc_subscribe(handler, account, currency):
         rdata.hset(handler.id, "currency", currency)
         rdata.hset(handler.id, "last-connect", float(time.time()))
         info = json.loads(response.body)
+
+        logging.info('info response;' + str(info) + ';' + handler.request.remote_ip + ';' + handler.id)
+        print("[" + str(int(time.time())) + "] info response " + str(info))
+
         info['uuid'] = handler.id
+        
         price_cur = rdata.hget("prices", "coinmarketcap:nano-" + sub_pref_cur[handler.id].lower()).decode('utf-8')
         price_btc = rdata.hget("prices", "coinmarketcap:nano-btc").decode('utf-8')
         info['currency'] = sub_pref_cur[handler.id].lower()
@@ -317,6 +334,7 @@ def rpc_subscribe(handler, account, currency):
 @tornado.gen.coroutine
 def rpc_reconnect(handler):
     logging.info('reconnecting;' + handler.request.remote_ip + ';' + handler.id)
+    print('reconnecting')
     rpc = tornado.httpclient.AsyncHTTPClient()
     try:
         account = rdata.hget(handler.id, "account").decode('utf-8')
@@ -355,12 +373,20 @@ def rpc_reconnect(handler):
 @tornado.gen.coroutine
 def rpc_accountcheck(handler, account):
     logging.info('checking account;' + handler.request.remote_ip + ';' + handler.id)
+    print("[" + str(int(time.time())) + " checking account " + handler.request.remote_ip)
+
     rpc = tornado.httpclient.AsyncHTTPClient()
     message = '{\"action\":\"account_info",\"account\":\"' + account + '\"}'
-    logging.info('sending request;' + message + ';' + handler.request.remote_ip + ';' + handler.id)
+    logging.info('sending request;' + message + ';' + handler.request.remote_ip + ';' + handler.id )
+    print("[" + str(int(time.time())) + "] sending request " + account + " " + message + ';' + handler.request.remote_ip + ';' + handler.id)
+
     response = yield rpc_request(rpc, message)
+    print("[" + str(int(time.time())) + "] response checking account; " + str(response.code))
+
     if response.error:
         logging.error('account check error;' + handler.request.remote_ip + ';' + handler.id)
+        print("[" + str(int(time.time())) + '] account check error ' + str(e) + handler.request.remote_ip + ';' + handler.id )
+
         handler.write_message('{"error":"account check error"}')
     else:
         info = json.loads(response.body.decode('ascii'))
@@ -371,6 +397,8 @@ def rpc_accountcheck(handler, account):
             info = '{"ready":true}'
 
         logging.info('account check response sent;' + handler.request.remote_ip + ';' + handler.id)
+        print("[" + str(int(time.time())) + "] account check response sent; " + info)
+
         handler.write_message(info)
 
 
@@ -381,6 +409,8 @@ class WSHandler(tornado.websocket.WebSocketHandler):
         logging.info('new connection;' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
             self.request.headers.get('User-Agent')))
 
+        print("[" + str(int(time.time())) + " new connection " + self.request.remote_ip)
+
     def on_message(self, message):
         address = str(self.request.remote_ip)
         now = int(round(time.time() * 1000))
@@ -389,18 +419,31 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                 logging.error('client messaging too quickly: ' + str(
                     now - mesg_last[address]) + 'ms;' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
                     self.request.headers.get('User-Agent')))
+                
+                print("[" + str(int(time.time())) + " client messaging too quickly ")
+
+
         mesg_last[address] = now
-        logging.info('request;' + message + ';' + self.request.remote_ip + ';' + self.id)
+        logging.info('message request;' + message + ';' + self.request.remote_ip + ';' + self.id)
+        print("[" + str(int(time.time())) + " message : " + message)
+
         if message not in active_messages:
             active_messages.add(message)
+            print("[" + str(int(time.time())) + " added message : " + message)
         else:
             logging.error('request already active;' + message + ';' + self.request.remote_ip + ';' + self.id)
+            print("[" + str(int(time.time())) + " error request already active : " + message)
             return
         try:
             nanocast_request = json.loads(message)
+            print("[" + str(int(time.time())) + " nanocast_request : " + nanocast_request['action'])
+            logging.info('nanocast request ' + nanocast_request['action'])
+
             if nanocast_request['action'] in allowed_rpc_actions:
                 if 'request_id' in nanocast_request:
                     requestid = nanocast_request['request_id']
+                    print("[" + str(int(time.time())) + " nanocast_request id : " + nanocast_request['request_id'])
+
                 else:
                     requestid = None
 
@@ -420,6 +463,8 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                         self.id = nanocast_request['uuid']
                         clients[self.id] = self
                         logging.info('reconnection request;' + self.request.remote_ip + ';' + self.id)
+                        print("[" + str(int(time.time())) + 'reconnection request' + self.request.remote_ip + ';' + self.id )
+                        
                         try:
                             if 'currency' in nanocast_request and nanocast_request['currency'] in currency_list:
                                 currency = nanocast_request['currency']
@@ -438,12 +483,16 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                                         str(float(time.time())) + ":" + self.id + ":connect:" + self.request.remote_ip)
                         except Exception as e:
                             logging.error('reconnect error;' + str(e) + ';' + self.request.remote_ip + ';' + self.id)
+                            print("[" + str(int(time.time())) + 'reconnection error' + str(e) + self.request.remote_ip + ';' + self.id )
+
                             reply = {'error': 'reconnect error', 'detail': str(e)}
                             if requestid is not None: reply['request_id'] = requestid
                             self.write_message(json.dumps(reply))
                     # new user, setup uuid(or use existing if available) and account info
                     else:
                         logging.info('subscription request;' + self.request.remote_ip + ';' + self.id)
+                        print("[" + str(int(time.time())) + " subscription_request : " + self.request.remote_ip + ';' + self.id)
+
                         try:
                             if 'currency' in nanocast_request and nanocast_request['currency'] in currency_list:
                                 currency = nanocast_request['currency']
@@ -454,6 +503,8 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                                         str(float(time.time())) + ":" + self.id + ":connect:" + self.request.remote_ip)
                         except Exception as e:
                             logging.error('subscribe error;' + str(e) + ';' + self.request.remote_ip + ';' + self.id)
+                            print("[" + str(int(time.time())) + 'subscribe error' + str(e) + self.request.remote_ip + ';' + self.id )
+
                             reply = {'error': 'subscribe error', 'detail': str(e)}
                             if requestid is not None: reply['request_id'] = requestid
                             self.write_message(json.dumps(reply))
@@ -461,6 +512,8 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                 # rpc: price_data
                 elif nanocast_request['action'] == "price_data":
                     logging.info('price data request;' + self.request.remote_ip + ';' + self.id)
+                    print("[" + str(int(time.time())) + ' price data request' + self.request.remote_ip + ';' + self.id )
+                    
                     try:
                         if nanocast_request['currency'].upper() in currency_list:
                             try:
@@ -485,10 +538,14 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                 # rpc: account_check
                 elif nanocast_request['action'] == "account_check":
                     logging.info('account check request;' + self.request.remote_ip + ';' + self.id)
+                    print("[" + str(int(time.time())) + '] account check request ' + self.request.remote_ip + ';' + self.id )
+
                     try:
                         rpc_accountcheck(self, nanocast_request['account'])
                     except Exception as e:
                         logging.error('account check error;' + str(e) + ';' + self.request.remote_ip + ';' + self.id)
+                        print("[" + str(int(time.time())) + ' account check error' + str(e) + self.request.remote_ip + ';' + self.id )
+
                         self.write_message('{"error":"account check error","detail":"' + str(e) + '"}')
 
                 # rpc: work_generate
@@ -502,6 +559,10 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                         logging.error(
                             'work rpc denied;work disable;' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
                                 self.request.headers.get('User-Agent')))
+
+                        print("[" + str(int(time.time())) + 'work rpc denied;work disable;' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
+                                self.request.headers.get('User-Agent')) )
+
                         self.write_message(
                             '{"error":"work rpc denied","detail":"you are using an old client, please update"}')
                     else:
@@ -512,11 +573,13 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                                 e) + ';' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
                                 self.request.headers.get('User-Agent')))
                             self.write_message('{"error":"work rpc error","detail":"' + str(e) + '"}')
+                            print("[" + str(int(time.time())) + ' work rpc error ' + str(e) + self.request.remote_ip + ';' + self.id )
 
                 # rpc: process
                 elif nanocast_request['action'] == "process":
                     try:
                         process_defer(self, json.loads(nanocast_request['block']))
+                        print("[" + str(int(time.time())) + ' process_defer ' + nanocast_request['block'] )
                     except Exception as e:
                         logging.error('process rpc error;' + str(
                             e) + ';' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
@@ -599,6 +662,7 @@ class Callback(tornado.web.RequestHandler):
 application = tornado.web.Application([
     (r"/", WSHandler),
 ])
+#], debug=True)
 
 nodecallback = tornado.web.Application([
     (r"/", Callback),
@@ -609,14 +673,14 @@ if __name__ == "__main__":
     formatter = logging.Formatter("%(asctime)s;%(levelname)s;%(message)s", "%Y-%m-%d %H:%M:%S %z")
     handler.setFormatter(formatter)
     root = logging.getLogger()
-    root.setLevel(os.environ.get("NANO_LOG_LEVEL", "INFO"))
+    root.setLevel(os.environ.get("NANO_LOG_LEVEL", "DEBUG"))
     root.addHandler(handler)
     print("[" + str(int(time.time())) + "] Starting NANOCast Server...")
     logging.info('Starting NANOCast Server')
-    logging.getLogger('tornado.access').disabled = True
+    logging.getLogger('tornado.access').disabled = False
 
     cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    print(os.path.join(cert_dir, cert_crt_file), os.path.join(cert_dir, cert_key_file))
+    
     cert.load_cert_chain(os.path.join(cert_dir, cert_crt_file), os.path.join(cert_dir, cert_key_file))
 
     https_server = tornado.httpserver.HTTPServer(application)
