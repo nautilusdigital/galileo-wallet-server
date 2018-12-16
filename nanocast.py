@@ -24,16 +24,17 @@ from bitstring import BitArray
 # future use for pending blocks for accounts, cached work
 # racct   = redis.StrictRedis(host='localhost', port=6379, db=1)
 
-rdata = redis.StrictRedis(host='localhost', port=6379, db=2)  # used for price data and subscriber uuid info
+rdata = redis.StrictRedis(host='galileo-redis.e1jpbl.0001.usw2.cache.amazonaws.com', port=6379, db=2)  # used for price data and subscriber uuid info
 
 # get environment
-rpc_url = os.getenv('NANO_RPC_URL', 'http://34.220.55.202:55000')  # use env, else default to localhost rpc port
-work_url = os.getenv('NANO_WORK_URL', rpc_url)  # use env, else default to rpc
-callback_port = os.getenv('NANO_CALLBACK_PORT', 17076)
-socket_port = os.getenv('NANO_SOCKET_PORT', 8081)
+rpc_url = 'http://node-001.galileocoin.com:55000'  # use env, else default to localhost rpc port
+work_url = 'http://node-001.galileocoin.com:55000'  # use env, else default to rpc
+callback_port = 17076
+socket_port = 8081
 cert_dir = '/home/ubuntu'  # use /home/username instead of /home/username/
 cert_key_file = 'nanotest.key'  # TLS certificate private key
 cert_crt_file = 'nanotest.crt'  # full TLS certificate bundle
+use_coinmarketcap_api = False;
 
 # whitelisted commands, disallow anything used for local node-based wallet as we may be using multiple back ends
 allowed_rpc_actions = ["account_balance", "account_block_count", "account_check", "account_info", "account_history",
@@ -259,9 +260,10 @@ def process_defer(handler, block):
 
 @tornado.gen.coroutine
 def work_request(http_client, body):
+    logging.info("body to send  " + body + " work url " + work_url)
     response = yield http_client.fetch(work_url, method='POST', body=body)
-    print("[" + str(int(time.time())) + " response  work url " + response)
-    logging.info("response work url  " + response)
+    #logging.info("response work url  " + response)
+    #print("[" + str(int(time.time())) + "] response  work url " + response)
     raise tornado.gen.Return(response)
 
 
@@ -275,6 +277,7 @@ def work_defer(handler, message):
         active_work.add(request['hash'])
     try:
         rpc = tornado.httpclient.AsyncHTTPClient()
+        logging.info('work generate message to send; ' + message)
         response = yield work_request(rpc, message)
         logging.info('work request return code;' + str(response.code))
         if response.error:
@@ -287,7 +290,7 @@ def work_defer(handler, message):
         active_work.remove(request['hash'])
     except:
         logging.error(
-            'work defer exception;' + str(sys.exc_info()) + ';' + handler.request.remote_ip + ';' + handler.id)
+            'work defer exception;' + sys.exc_info() + ';' + handler.request.remote_ip + ';' + handler.id)
         active_work.remove(request['hash'])
 
 
@@ -394,10 +397,8 @@ def rpc_accountcheck(handler, account):
             if info['error'] == "Account not found":
                 info = '{"ready":false}'
         except:
-            info = '{"ready":true}'
-
-        logging.info('account check response sent;' + handler.request.remote_ip + ';' + handler.id)
-        print("[" + str(int(time.time())) + "] account check response sent; " + info)
+            logging.info('account check response sent; ' + handler.request.remote_ip + ';' + handler.id)
+            print("[" + str(int(time.time())) + "] account check response sent; " + str(info))
 
         handler.write_message(info)
 
@@ -456,7 +457,7 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                 #     logging.info('requested count is <0 or >1000, correcting to 1000;'+self.request.remote_ip+';'+self.id)
 
                 # rpc: account_subscribe
-                if nanocast_request['action'] == "account_subscribe":
+                if nanocast_request['action'] == "account_subscribe" and use_coinmarketcap_api == True:
                     # already subscribed, reconnect
                     if 'uuid' in nanocast_request:
                         del clients[self.id]
@@ -510,7 +511,7 @@ class WSHandler(tornado.websocket.WebSocketHandler):
                             self.write_message(json.dumps(reply))
 
                 # rpc: price_data
-                elif nanocast_request['action'] == "price_data":
+                elif nanocast_request['action'] == "price_data" and use_coinmarketcap_api == True:
                     logging.info('price data request;' + self.request.remote_ip + ';' + self.id)
                     print("[" + str(int(time.time())) + ' price data request' + self.request.remote_ip + ';' + self.id )
                     
@@ -669,7 +670,7 @@ nodecallback = tornado.web.Application([
 ])
 
 if __name__ == "__main__":
-    handler = WatchedFileHandler(os.environ.get("NANO_LOG_FILE", "nanocast.log"))
+    handler = WatchedFileHandler("/home/ubuntu/nanocast/galileo-wallet-server.log")
     formatter = logging.Formatter("%(asctime)s;%(levelname)s;%(message)s", "%Y-%m-%d %H:%M:%S %z")
     handler.setFormatter(formatter)
     root = logging.getLogger()
@@ -679,9 +680,9 @@ if __name__ == "__main__":
     logging.info('Starting NANOCast Server')
     logging.getLogger('tornado.access').disabled = False
 
-    cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    #cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     
-    cert.load_cert_chain(os.path.join(cert_dir, cert_crt_file), os.path.join(cert_dir, cert_key_file))
+    #cert.load_cert_chain(os.path.join(cert_dir, cert_crt_file), os.path.join(cert_dir, cert_key_file))
 
     https_server = tornado.httpserver.HTTPServer(application)
     https_server.listen(socket_port)
@@ -692,6 +693,7 @@ if __name__ == "__main__":
     # 	"callback_target": "/"
 
     # push latest price data to all subscribers every minute
-    tornado.ioloop.PeriodicCallback(send_prices, 60000).start()
+    if use_coinmarketcap_api == True:
+        tornado.ioloop.PeriodicCallback(send_prices, 60000).start()
 
     tornado.ioloop.IOLoop.instance().start()
