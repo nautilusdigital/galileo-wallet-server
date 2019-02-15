@@ -24,11 +24,11 @@ from bitstring import BitArray
 # future use for pending blocks for accounts, cached work
 # racct   = redis.StrictRedis(host='localhost', port=6379, db=1)
 
-rdata = redis.StrictRedis(host='galileo-redis.e1jpbl.0001.usw2.cache.amazonaws.com', port=6379, db=2)  # used for price data and subscriber uuid info
+rdata = redis.StrictRedis(host='galileo-redis.qv1zox.0001.cac1.cache.amazonaws.com', port=6379, db=2)  # used for price data and subscriber uuid info
 
 # get environment
-rpc_url = 'http://node-001.galileocoin.com:55000'  # use env, else default to localhost rpc port
-work_url = 'http://node-001.galileocoin.com:55000'  # use env, else default to rpc
+rpc_url = 'http://172.31.12.198:55000'  # use env, else default to localhost rpc port
+work_url = 'http://172.31.12.198:55000'  # use env, else default to rpc
 callback_port = 17076
 socket_port = 8081
 cert_dir = '/home/ubuntu'  # use /home/username instead of /home/username/
@@ -404,6 +404,9 @@ def rpc_accountcheck(handler, account):
 
 
 class WSHandler(tornado.websocket.WebSocketHandler):
+    def check_origin(self, origin):
+        return True
+        
     def open(self):
         self.id = str(uuid.uuid4())
         clients[self.id] = self
@@ -551,30 +554,15 @@ class WSHandler(tornado.websocket.WebSocketHandler):
 
                 # rpc: work_generate
                 elif nanocast_request['action'] == "work_generate":
-                    if self.request.headers.get('X-Client-Version') is None:
-                        xcver = 0
-                    else:
-                        xcver = int(self.request.headers.get('X-Client-Version'))
-                    # logging.debug(self.request.headers)
-                    if (self.request.headers.get('User-Agent') != 'SwiftWebSocket') and (xcver < 28):
-                        logging.error(
-                            'work rpc denied;work disable;' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
-                                self.request.headers.get('User-Agent')))
-
-                        print("[" + str(int(time.time())) + 'work rpc denied;work disable;' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
-                                self.request.headers.get('User-Agent')) )
-
-                        self.write_message(
-                            '{"error":"work rpc denied","detail":"you are using an old client, please update"}')
-                    else:
-                        try:
-                            work_defer(self, json.dumps(nanocast_request))
-                        except Exception as e:
-                            logging.error('work rpc error;' + str(
-                                e) + ';' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
-                                self.request.headers.get('User-Agent')))
-                            self.write_message('{"error":"work rpc error","detail":"' + str(e) + '"}')
-                            print("[" + str(int(time.time())) + ' work rpc error ' + str(e) + self.request.remote_ip + ';' + self.id )
+                    
+                    try:
+                        work_defer(self, json.dumps(nanocast_request))
+                    except Exception as e:
+                        logging.error('work rpc error;' + str(
+                            e) + ';' + self.request.remote_ip + ';' + self.id + ';User-Agent:' + str(
+                            self.request.headers.get('User-Agent')))
+                        self.write_message('{"error":"work rpc error","detail":"' + str(e) + '"}')
+                        print("[" + str(int(time.time())) + ' work rpc error ' + str(e) + self.request.remote_ip + ';' + self.id )
 
                 # rpc: process
                 elif nanocast_request['action'] == "process":
